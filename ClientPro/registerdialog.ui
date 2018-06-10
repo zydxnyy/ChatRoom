@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RegisterDialog</class>
+ <widget class="QDialog" name="RegisterDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>300</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>注册</string>
+  </property>
+  <widget class="QWidget" name="gridLayoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>30</x>
+     <y>30</y>
+     <width>341</width>
+     <height>171</height>
+    </rect>
+   </property>
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="0" column="1">
+     <widget class="QLineEdit" name="nicknameEdit"/>
+    </item>
+    <item row="2" column="1">
+     <widget class="QLineEdit" name="pwdEdit">
+      <property name="echoMode">
+       <enum>QLineEdit::Password</enum>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="1">
+     <widget class="QLineEdit" name="RepwdEdit">
+      <property name="echoMode">
+       <enum>QLineEdit::Password</enum>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="0">
+     <widget class="QLabel" name="nickname">
+      <property name="text">
+       <string>昵称：</string>
+      </property>
+      <property name="buddy">
+       <cstring>nicknameEdit</cstring>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="0">
+     <widget class="QLabel" name="pwd">
+      <property name="text">
+       <string>密码：</string>
+      </property>
+      <property name="buddy">
+       <cstring>pwdEdit</cstring>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="0">
+     <widget class="QLabel" name="Repwd">
+      <property name="text">
+       <string>重复输入密码：</string>
+      </property>
+      <property name="buddy">
+       <cstring>RepwdEdit</cstring>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="0">
+     <widget class="QLabel" name="QrCode">
+      <property name="text">
+       <string>Qr号：</string>
+      </property>
+      <property name="buddy">
+       <cstring>QrCodeEdit</cstring>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="1">
+     <widget class="QLineEdit" name="QrCodeEdit"/>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QWidget" name="horizontalLayoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>250</y>
+     <width>231</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QPushButton" name="regis">
+      <property name="text">
+       <string>注册</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QPushButton" name="login">
+      <property name="text">
+       <string>登陆</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QLabel" name="note">
+   <property name="geometry">
+    <rect>
+     <x>50</x>
+     <y>220</y>
+     <width>301</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+  </widget>
+ </widget>
+ <tabstops>
+  <tabstop>nicknameEdit</tabstop>
+  <tabstop>QrCodeEdit</tabstop>
+  <tabstop>pwdEdit</tabstop>
+  <tabstop>RepwdEdit</tabstop>
+  <tabstop>regis</tabstop>
+  <tabstop>login</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>
