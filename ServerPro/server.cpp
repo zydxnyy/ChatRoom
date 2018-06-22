@@ -1,5 +1,9 @@
 #include "server.h"
 
+string encript(const std::string& m) {
+    return QCryptographicHash::hash(QByteArray::fromStdString(m), QCryptographicHash::Md5).toStdString();
+}
+
 Server::Server()
 {
 }
@@ -57,10 +61,11 @@ bool Server::powerOn() {
     }
     database.exec("SET NAMES 'Latin1'");
     QSqlQuery sql_query(database);
-    QString create_sql = "create table account(accountId int primary key, nickname varchar(255), password varchar(255));";
-    sql_query.prepare(create_sql);
-    sql_query.exec();
-
+    QString create_sql = "create table account(accountId varchar(255) primary key, nickname varchar(255), password varchar(255));";
+    sql_query.exec(create_sql);
+    create_sql = "create table fri_relation(accountId1 varchar(255), accountId2 varchar(255));";
+    sql_query.exec(create_sql);
+    cout << sql_query.lastError().text().toStdString() << endl;
     rwUserMap = CreateMutex(NULL, false, NULL);
 
     /***启动监听线程***/
@@ -119,7 +124,7 @@ DWORD WINAPI recvThreadFunc(LPVOID lpParam) {
     while (true) {
         recvData = recvBuffer.getBufferEnd();//得到缓冲区尾部
         ret = recv(*sClient, recvData, recvBuffer.getRest(), 0);//接收数据
-        cout << "recv ret=" << ret << endl;
+//        cout << "recv ret=" << ret << endl;
         /***超过一定时间没有接收到客户端的响应，释放线程***/
         if (ret == -1) {
             if (dCnt++ < 3) {
@@ -148,6 +153,7 @@ DWORD WINAPI recvThreadFunc(LPVOID lpParam) {
         }
         case CHAT: {
             server->recvChat(&recvBuffer, sendBuffer, rwSendBufferMutex, sendBufferSmp);
+            std::cout << "CHAT" << std::endl;
             break;
         }
         case REGISTER: {
@@ -157,12 +163,17 @@ DWORD WINAPI recvThreadFunc(LPVOID lpParam) {
         }
         case SEARCH_ACCOUNT: {
             server->recvSrchFri(&recvBuffer, sendBuffer, rwSendBufferMutex, sendBufferSmp);
+            std::cout << "SEARCH_ACCOUNT" << std::endl;
+            break;
+        }
+        case ADD_FRIEND_REQUEST:{
+            server->recvAddFriRqst(&recvBuffer, sendBuffer, rwSendBufferMutex, sendBufferSmp);
+            std::cout << "ADD_FRIEND_REQUEST" << std::endl;
             break;
         }
         }
         recvBuffer.setHead(length);
     }
-    cout << param->accountId << " exit!" << endl;
     UserMap::iterator itr = server->userMap.begin();
     //将数据段用json编码
     Json::Value root;
@@ -281,7 +292,7 @@ int Server::recvLogin(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSend
         /*验证合法性*/
         bool validate = false;
         QSqlQuery query(database);
-        QString statement = QString("select * from account where accountId = %1 and password = '%2'").arg(accountId).arg(pwd.c_str());
+        QString statement = QString("select * from account where accountId = '%1' and password = '%2'").arg(accountId).arg(pwd.c_str());
         query.exec(statement);
         if (query.next()) {
             validate = true;
@@ -289,11 +300,18 @@ int Server::recvLogin(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSend
 
         //检验登陆信息合法性
         if (!validate) {
-            fill_in(sendBuffer, rwSendBufferMutex, sendBufferSmp, NULL, LOGIN, ERR);
+            fill_in(sendBuffer, rwSendBufferMutex, sendBufferSmp, NULL, LOGIN, ERR1);
             std::cout << "Login failed" << std::endl;
         }
         //登陆验证成功
         else {
+
+            if (userMap.find(accountId)!=userMap.end()) {
+                fill_in(sendBuffer, rwSendBufferMutex, sendBufferSmp, NULL, LOGIN, ERR2);
+                std::cout << "Login failed, has logined" << std::endl;
+                return 0;
+            }
+
             string n = query.value("nickname").toString().toStdString();
             WaitForSingleObject(rwUserMap, INFINITE);
             userMap[accountId] = new User(accountId, n, recvBuffer, sendBuffer, rwSendBufferMutex, sendBufferSmp);
@@ -304,13 +322,20 @@ int Server::recvLogin(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSend
             Json::Value users;
             Json::StreamWriterBuilder wbuilder;
 
+            statement = QString("select * from fri_relation,account where fri_relation.accountId1 = '%1' and fri_relation.accountId2 = account.accountId;").arg(accountId);
+            qDebug() << statement;
+            query.exec(statement);
+            cout << "exec=" << query.lastError().text().toStdString() << endl;
+
             UserMap::iterator itr;
-            for (itr = userMap.begin(); itr != userMap.end(); ++itr) {
-                if (itr->first == accountId) continue;
+            while (query.next()) {
                 users.clear();
-                users["accountId"] = itr->second->accountId;
-                users["nickname"] = itr->second->nickname;
-                users["isOnline"] = false;
+                users["accountId"] = query.value("accountId").toString().toUInt();
+                users["nickname"] = query.value("nickname").toString().toStdString();
+                //如果用户已上线
+                if (userMap.find(query.value("accountId").toString().toUInt())!=userMap.end()) users["isOnline"] = true;
+                else users["isOnline"] = false;
+                cout << users.toStyledString() << endl;
                 root["friend"].append(users);
             }
             root["accountId"] = accountId;
@@ -322,17 +347,15 @@ int Server::recvLogin(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSend
                 std::cout << "Login okay" << std::endl;
             else
                 std::cout << "Login failed 2" << std::endl;
-
-            //通知线上的所有人
+            query.seek(0);
+            //通知好友
             Json::Value root_t;
             root_t["accountId"] = accountId;
             root_t["nickname"] = n;
             s = Json::writeString(wbuilder, root_t);
-            for (itr = userMap.begin(); itr != userMap.end(); ++itr) {
-                if (itr->first!=accountId) {
-                    fill_in(itr->first, s.c_str(), NOTIFY_LOGIN, SEND);
-                    std::cout << "Notify " << itr->first << std::endl;
-                }
+            while (query.next()) {
+                fill_in(query.value("accountId").toString().toUInt(), s.c_str(), NOTIFY_LOGIN, SEND);
+                std::cout << "Notify " << query.value("accountId").toString().toUInt() << std::endl;
             }
         }
     }
@@ -359,12 +382,12 @@ int Server::recvRegis(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSend
         printf("%d register with nickname = %s and pwd = %s\n", accountId, nickname.c_str(), password.c_str());
 
         QSqlQuery query(database);
-        QString statement = QString("insert into account values(%1, '%2', '%3');").arg(accountId).arg(nickname.c_str()).arg(password.c_str());
+        QString statement = QString("insert into account values('%1', '%2', '%3');").arg(accountId).arg(nickname.c_str()).arg(password.c_str());
         qDebug() << statement;
 
         if (!query.exec(statement)) {
             qDebug() << query.lastError();
-            fill_in(sendBuffer, rwSendBufferMutex, sendBufferSmp, NULL, REGISTER, ERR);
+            fill_in(sendBuffer, rwSendBufferMutex, sendBufferSmp, NULL, REGISTER, ERR1);
         }
         else {
             qDebug() << "Insert done\n";
@@ -423,7 +446,7 @@ int Server::recvSrchFri(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSe
         string search_content = root["search_content"].asString();
 
         QSqlQuery query(database);
-        QString statement = QString("select * from account where nickname like '%%2%'").arg(search_content.c_str());
+        QString statement = QString("select * from account where nickname like '%%1%' or accountId like '%%1%'").arg(search_content.c_str());
         qDebug() << statement;
         query.exec(statement);
         Json::Value root, u;
@@ -431,7 +454,7 @@ int Server::recvSrchFri(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSe
         u_int aId;
         while (query.next()) {
             u.clear();
-            aId = query.value("accountId").toUInt();
+            aId = query.value("accountId").toString().toUInt();
             u["accountId"] = aId;
             u["nickname"] = query.value("nickname").toString().toStdString();
             if (userMap.find(aId)!=userMap.end()) u["isOnline"] = true;
@@ -447,4 +470,110 @@ int Server::recvSrchFri(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSe
         cout << errs << endl;
     }
     delete reader;
+}
+
+int Server::recvAddFriRqst(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSendBufferMutex, HANDLE* sendBufferSmp) {
+    char* recvData = recvBuffer->getBufferHead();
+    u_int recvDataLength = *(u_int*)(recvData);
+    BYTE stateCode = *(BYTE*)(recvData+5);
+    Json::CharReader* reader = Json::CharReaderBuilder().newCharReader();
+    Json::Value root;
+    JSONCPP_STRING errs;
+    bool ok = reader->parse(recvData + 6, recvData + recvDataLength, &root, &errs);
+    //发送请求
+    if (stateCode == SEND) {
+        if (ok&&errs.size() == 0)
+        {
+            string comment = root["comment"].asString();
+            u_int addId = root["addId"].asUInt();
+            u_int fromId = root["fromId"].asUInt();
+            string fromName = root["fromName"].asString();
+
+            cout << fromId << " request to add " << addId << endl;
+
+            Json::StreamWriterBuilder wbuilder;
+            std::string s = Json::writeString(wbuilder, root);
+            FriRqstPairSet.insert(FriRqstPair(fromId, addId));
+            fill_in(addId, s.c_str(), ADD_FRIEND_REQUEST, SEND);
+        }
+        //解析失败
+        else {
+            cout << errs << endl;
+        }
+        delete reader;
+    }
+    //同意添加
+    else if (stateCode == AGREE) {
+        if (ok&&errs.size() == 0)
+        {
+            string comment = root["comment"].asString();
+            u_int addId = root["addId"].asUInt();
+            u_int fromId = root["fromId"].asUInt();
+            string addName = root["addName"].asString();
+
+            cout << addId << " agree to add " << fromId << endl;
+
+            Json::StreamWriterBuilder wbuilder;
+            std::string s = Json::writeString(wbuilder, root);
+
+            FriRqstPairSet.erase(FriRqstPair(fromId, addId));
+
+            if (addId!=fromId) {
+                //向数据库的关系表插入关系
+                QSqlQuery query(database);
+                QString statement = QString("insert into fri_relation(accountId1, accountId2) values ('%1', '%2');").arg(fromId).arg(addId);
+                cout << "exec = " << query.exec(statement) << endl;
+                qDebug() << statement;
+                statement = QString("insert into fri_relation(accountId1, accountId2) values ('%2', '%1');").arg(fromId).arg(addId);
+                cout << "exec = " << query.exec(statement) << endl;
+                qDebug() << statement;
+            }
+
+            QSqlQuery query(database);
+            QString statement = QString("select * from account where accountId = %1;").arg(fromId);
+            query.exec(statement);
+            query.next();
+
+            fill_in(fromId, s.c_str(), ADD_FRIEND_REQUEST, AGREE);
+            //通知发送方添加成功
+            Json::Value root_t;
+            root_t["accountId"] = addId;
+            root_t["nickname"] = addName;
+            s = Json::writeString(wbuilder, root_t);
+            fill_in(fromId, s.c_str(), NOTIFY_LOGIN, SEND);
+            root_t["accountId"] = fromId;
+            root_t["nickname"] = query.value("nickname").toString().toStdString();
+            s = Json::writeString(wbuilder, root_t);
+            fill_in(addId, s.c_str(), NOTIFY_LOGIN, SEND);
+        }
+        //解析失败
+        else {
+            cout << errs << endl;
+        }
+        delete reader;
+    }
+    //拒绝添加
+    else if (stateCode == REJECT) {
+        if (ok&&errs.size() == 0)
+        {
+            string comment = root["comment"].asString();
+            u_int addId = root["addId"].asUInt();
+            u_int fromId = root["fromId"].asUInt();
+            string addName = root["addName"].asString();
+
+            cout << addId << " reject to add " << fromId << endl;
+
+            Json::StreamWriterBuilder wbuilder;
+            std::string s = Json::writeString(wbuilder, root);
+
+            FriRqstPairSet.erase(FriRqstPair(fromId, addId));
+
+            fill_in(fromId, s.c_str(), ADD_FRIEND_REQUEST, REJECT);
+        }
+        //解析失败
+        else {
+            cout << errs << endl;
+        }
+        delete reader;
+    }
 }

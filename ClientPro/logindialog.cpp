@@ -47,9 +47,14 @@ void LoginDialog::on_recvLogin(BYTE stateCode) {
         cout << "Login succ" << endl;
         accept();
     }
-    else {
+    else if (stateCode == ERR1) {
         cout << "Login failed" << endl;
         ui->note->setText(QString::fromLocal8Bit("µÇÂ¼Ê§°Ü£¬ÃÜÂë»òÕÊ»§Ãû´íÎó£¡"));
+        ui->pwdEdit->clear();
+        ui->pwdEdit->setFocus();
+    }
+    else if (stateCode == ERR2) {
+        ui->note->setText(QString::fromLocal8Bit("µÇÂ¼Ê§°Ü£¬ÓÃ»§ÒÑ¾­µÇÂ½£¡"));
         ui->pwdEdit->clear();
         ui->pwdEdit->setFocus();
     }

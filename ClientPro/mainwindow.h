@@ -6,6 +6,7 @@
 #include <vector>
 #include <QColor>
 #include <QListWidgetItem>
+#include <notification.h>
 
 namespace Ui {
 class MainWindow;
@@ -28,6 +29,8 @@ private:
     //选中的id
     u_int select_id;
     QColor yColor;
+    Notification* notificationDlg;
+    AddFriDlg* afd;
 public slots:
     void on_recvNotifyLogin(u_int);
     void on_recvChat(u_int);
@@ -39,6 +42,8 @@ private slots:
     void on_friendList_itemClicked(QListWidgetItem *item);
 
     void on_add_fri_triggered();
+
+    void on_action_triggered();
 
 protected:
     bool eventFilter(QObject *target, QEvent *event);//事件过滤器

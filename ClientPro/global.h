@@ -5,6 +5,8 @@
 #include <string.h>
 #include <sstream>
 #include <time.h>
+#include <QCryptographicHash>
+#include <QString>
 
 #define MAX_LENGTH 4096
 #define MAX_NAME_LENGTH 48
@@ -23,7 +25,6 @@ enum {
     CHAT,
     GROUPCHAT,
     ADD_FRIEND_REQUEST,
-    ACK_FRIEND_REQUEST,
     NOTIFY_LOGIN,
     LOGOUT,
     SEARCH_ACCOUNT,
@@ -33,9 +34,12 @@ enum {
 enum {
     SEND,   	//发送状态
     OKAY,   	//回传OK状态
-    ERR,    	//出错
-    PARSE_FAIL,	//解析失败
-    NOT_AGREE,  //对方拒绝
+    PARSE_FAIL,    	//解析失败
+    AGREE,
+    REJECT,
+    ERR1,
+    ERR2,
+    ERR3,
 };
 
 //好友的信息
@@ -70,10 +74,29 @@ struct User {
     }
 };
 
+struct AddFriRqst{
+    u_int fromId;
+    std::string fromName;
+    std::string comment;
+    AddFriRqst(u_int fromId, std::string fromName, std::string comment) {
+        this->fromId = fromId;
+        this->fromName = fromName;
+        this->comment = comment;
+    }
+    AddFriRqst() {}
+    AddFriRqst(const AddFriRqst& ano) {
+        this->fromId = ano.fromId;
+        this->fromName = ano.fromName;
+        this->comment =  ano.comment;
+    }
+};
+
 class Client;
 class LoginDialog;
 class MainWindow;
 class RegisterDialog;
 class AddFriDlg;
+class listWidgetFriRqst;
+class Notification;
 
 #endif // GLOBAL_H

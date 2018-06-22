@@ -13,6 +13,7 @@
 #include <MyBuffer.h>
 #include <global.h>
 #include <CUtil.h>
+#include <vector>
 using namespace std;
 
 class Client : public QObject
@@ -23,6 +24,8 @@ public:
     friend class MainWindow;
     friend class RegisterDialog;
     friend class AddFriDlg;
+    friend class listWidgetFriRqst;
+    friend class Notification;
     explicit Client(QObject *parent = nullptr);
     ~Client();
     bool powerOn();
@@ -31,6 +34,8 @@ public:
     int regis(u_int accountId, const string& nickname, const string& password);
     int chat(u_int friend_accountId, const string& chatMsg);
     int srchFri(const string& srchContent);
+    int addFriRqst(u_int accountId, const string& comment);
+    int replyFriRqst(u_int accountId, BYTE flag);
 signals:
     void s_recvLogin(BYTE);
     void s_recvRegis(BYTE);
@@ -38,6 +43,7 @@ signals:
     void s_recvNotifyLogin(u_int);
     void s_recvLogout(u_int);
     void s_recvSrchFri(BYTE);
+    void s_recvAddFriRqst(BYTE);
 
 public slots:
 
@@ -74,6 +80,8 @@ private:
     User self;
     //存储搜索来的用户
     vector<User*> srchfri;
+    //存储添加好友的通知
+    vector<AddFriRqst> vAddFriRqst;
     /************私有成员函数**************/
     /*三个线程，心跳，发送与接收
      *
@@ -89,11 +97,15 @@ private:
     int recvNotifiyLogin();
     int recvLogout();
     int recvSrchFri();
+    int recvFriRqst();
+    int recvAddFriRqst();
 
     int handleEvent();
 
     /*填充发送缓冲区函数*/
     int fill_in(const char* sendMsg, const BYTE& actionCode, const BYTE& stateCode);
+
+    bool conn();
 };
 
 

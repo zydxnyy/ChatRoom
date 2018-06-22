@@ -36,7 +36,9 @@ SOURCES += \
     json/json_value.cpp \
     json/json_valueiterator.inl \
     json/json_writer.cpp \
-    addfridlg.cpp
+    addfridlg.cpp \
+    listwidgetfrirqst.cpp \
+    notification.cpp
 
 HEADERS += \
         mainwindow.h \
@@ -59,13 +61,17 @@ HEADERS += \
     json/version.h \
     json/version.h.in \
     json/writer.h \
-    addfridlg.h
+    addfridlg.h \
+    listwidgetfrirqst.h \
+    notification.h
 
 FORMS += \
         mainwindow.ui \
     logindialog.ui \
     registerdialog.ui \
-    addfridlg.ui
+    addfridlg.ui \
+    listwidgetfrirqst.ui \
+    notification.ui
 
 DISTFILES += \
     json/json.pri \

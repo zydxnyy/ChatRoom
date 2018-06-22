@@ -21,10 +21,15 @@ public slots:
 private slots:
     void on_search_btn_clicked();
 
+    void on_fri_list_currentRowChanged(int currentRow);
+
+    void on_fri_request_clicked();
+
 private:
     Ui::AddFriDlg *ui;
     Client* client;
     std::vector<User*>* srchFri;
+    u_int select_id;
 };
 
 #endif // ADDFRIDLG_H

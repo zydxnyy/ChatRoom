@@ -8,8 +8,12 @@ string getTime()
     strftime(tmp, sizeof(tmp), "%Y-%m-%d %H:%M:%S",localtime(&timep) );
     return tmp;
 }
+std::string encript(const std::string& m) {
+    return QCryptographicHash::hash(QByteArray::fromStdString(m), QCryptographicHash::Md5).toStdString();
+}
 
-Client::Client(QObject *parent) : QObject(parent)
+
+Client::Client(QObject *parent) : QObject(parent), vAddFriRqst(1024)
 {
 
 }
@@ -80,17 +84,31 @@ DWORD WINAPI heartbeatThreadFunc(LPVOID lpParam) {
     while (true) {
         ret = send(client->sclient, sendData, 6, 0);
         //短线重连
-//        if (ret == -1) {
-//            if (!client->conn()) break;
-//            else dCnt = 0;
-//        }
-//        else {
-//            dCnt = 0;
-//        }
+        if (ret == -1) {
+            if (!client->conn()) break;
+        }
         Sleep(3000);
     }
 
     return 0;
+}
+
+bool Client::conn() {
+    u_int deadCnt = 0;
+    //获取客户端连接socket
+    closesocket(sclient);
+    SOCKET sclientNew = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sclient = sclientNew;
+    while (::connect(sclient, (sockaddr *)&serAddr, sizeof(serAddr)) == SOCKET_ERROR) {
+        cout << "trying to reconnect" << endl;
+        if (deadCnt++ > 10) {
+            closesocket(sclient);
+            cout << "Connect error" << endl;
+            return false;
+        }
+        Sleep(3000);
+    }
+    return true;
 }
 
 DWORD WINAPI recvThreadFunc(LPVOID lpParam) {
@@ -180,6 +198,10 @@ int Client::handleEvent(){
         recvSrchFri();
         break;
     }
+    case ADD_FRIEND_REQUEST: {
+        recvAddFriRqst();
+        break;
+    }
     }
     recvBuffer.setHead(recvDataLength);
 }
@@ -246,6 +268,34 @@ int Client::srchFri(const string& srch_content) {
     root["search_content"] = string_To_UTF8(srch_content);
     std::string s = Json::writeString(wbuilder, root);
     fill_in(s.c_str(), SEARCH_ACCOUNT, SEND);
+    return 0;
+}
+
+int Client::addFriRqst(u_int accountId, const string &comment) {
+    if (userMap.find(accountId)!=userMap.end()) return -1;
+
+    Json::Value root;
+    Json::StreamWriterBuilder wbuilder;
+    root["addId"] = accountId;
+    root["comment"] = string_To_UTF8(comment);
+    root["fromId"] = self.accountId;
+    root["fromName"] = string_To_UTF8(self.nickname);
+    /*可重用代码，产生整个报文*/
+    std::string s = Json::writeString(wbuilder, root);
+    fill_in(s.c_str(), ADD_FRIEND_REQUEST, SEND);
+    return 0;
+}
+
+int Client::replyFriRqst(u_int accountId, BYTE flag) {
+    Json::Value root;
+    Json::StreamWriterBuilder wbuilder;
+    root["addId"] = self.accountId;
+    root["comment"] = string_To_UTF8("我答应你了");
+    root["fromId"] = accountId;
+    root["addName"] = string_To_UTF8(self.nickname);
+    /*可重用代码，产生整个报文*/
+    std::string s = Json::writeString(wbuilder, root);
+    fill_in(s.c_str(), ADD_FRIEND_REQUEST, flag);
     return 0;
 }
 
@@ -320,6 +370,7 @@ int Client::recvChat() {
         string chatMsg = UTF8_To_string(root["chatMessage"].asString());
         cout << " id = " << from << " send you msg:" << endl << chatMsg << endl;
         UserMap::iterator itr=userMap.find(from);
+        if (itr==userMap.end()) return -1;
         itr->second->history << itr->second->nickname  << " (" << from << ") " << getTime() << ":\n" << chatMsg << "\n\n";
         emit s_recvChat(from);
     }
@@ -345,8 +396,12 @@ int Client::recvNotifiyLogin() {
         if (ok&&errs.size() == 0)
         {
             u_int accountId = root["accountId"].asUInt();
-            std::string nickname = UTF8_To_string(root["nickname"].asString());
-            userMap[accountId] = new User(accountId, nickname, true);
+            if (userMap[accountId] != NULL) userMap[accountId]->isOnline = true;
+            else {
+                std::string nickname = UTF8_To_string(root["nickname"].asString());
+                bool isOnline = root["isOnline"].asBool();
+                userMap[accountId] = new User(accountId, nickname, isOnline);
+            }
             emit s_recvNotifyLogin(accountId);
         }
         //解析失败
@@ -377,7 +432,7 @@ int Client::recvLogout() {
             u_int logoutId = root["logoutId"].asUInt();
             if (logoutId==self.accountId) return 0;
             cout << logoutId << " logout" << endl;
-            userMap.erase(logoutId);
+            userMap[logoutId]->isOnline = false;
             emit s_recvLogout(logoutId);
         }
         //解析失败
@@ -405,6 +460,7 @@ int Client::recvSrchFri() {
         //解析成功
         if (ok&&errs.size() == 0)
         {
+            for (int i=0;i<srchfri.size();++i) delete srchfri[i];
             srchfri.clear();
             u_int accountId; bool isOnline; std::string nickname;
             for (u_int i = 0; i < root.size(); ++i) {
@@ -423,7 +479,92 @@ int Client::recvSrchFri() {
 
     }
     else {
-        cout << "Login failed" << endl;
+        cout << "Srch Fri failed" << endl;
     }
     emit s_recvLogin(stateCode);
+}
+
+int Client::recvAddFriRqst() {
+    char* recvData = recvBuffer.getBufferHead();
+    //读取数据包长度
+    u_int recvDataLength = *(u_int*)recvData;
+    //读取状态码
+    BYTE stateCode = recvData[5];
+    //接收到别人的好友请求
+    if (stateCode == SEND) {
+        Json::CharReader* reader = Json::CharReaderBuilder().newCharReader();
+        Json::Value root, users;
+        JSONCPP_STRING errs;
+        bool ok = reader->parse(recvData + 6, recvData + recvDataLength, &root, &errs);
+        //解析成功
+        if (ok&&errs.size() == 0)
+        {
+            u_int fromId = root["fromId"].asUInt();
+            u_int addId = root["addId"].asUInt();
+            if (addId != self.accountId) {
+                cout << "Recv add frirqst error, addId != selfId" << endl;
+                return 0;
+            }
+            string comment = UTF8_To_string(root["comment"].asString());
+            string fromName = UTF8_To_string(root["fromName"].asString());
+            cout << "Recv add friend request from " << fromId << "(" << fromName << ") with coment = " << comment << endl;
+            vAddFriRqst.push_back(AddFriRqst(fromId, fromName, comment));
+        }
+        //解析失败
+        else {
+            cout << errs << endl;
+        }
+        delete reader;
+        emit s_recvAddFriRqst(stateCode);
+    }
+    //被接受为好友
+    else if (stateCode == AGREE) {
+        Json::CharReader* reader = Json::CharReaderBuilder().newCharReader();
+        Json::Value root, users;
+        JSONCPP_STRING errs;
+        bool ok = reader->parse(recvData + 6, recvData + recvDataLength, &root, &errs);
+        //解析成功
+        if (ok&&errs.size() == 0)
+        {
+            u_int fromId = root["fromId"].asUInt();
+            u_int addId = root["addId"].asUInt();
+            if (fromId != self.accountId) {
+                cout << "Recv add frirqst error, fromId != selfId" << endl;
+                return 0;
+            }
+            string comment = UTF8_To_string(root["comment"].asString());
+            string addName = UTF8_To_string(root["addName"].asString());
+            cout << addName << "(" << addId << ") agree to add  " << fromId << " with coment = " << comment << endl;
+        }
+        //解析失败
+        else {
+            cout << errs << endl;
+        }
+        delete reader;
+    }
+    //被拒绝为好友
+    else if (stateCode == REJECT) {
+        Json::CharReader* reader = Json::CharReaderBuilder().newCharReader();
+        Json::Value root, users;
+        JSONCPP_STRING errs;
+        bool ok = reader->parse(recvData + 6, recvData + recvDataLength, &root, &errs);
+        //解析成功
+        if (ok&&errs.size() == 0)
+        {
+            u_int fromId = root["fromId"].asUInt();
+            u_int addId = root["addId"].asUInt();
+            if (fromId != self.accountId) {
+                cout << "Recv add frirqst error, fromId != selfId" << endl;
+                return 0;
+            }
+            string comment = UTF8_To_string(root["comment"].asString());
+            string addName = UTF8_To_string(root["addName"].asString());
+            cout << addName << "(" << addId << ") reject to add  " << fromId << " with coment = " << comment << endl;
+        }
+        //解析失败
+        else {
+            cout << errs << endl;
+        }
+        delete reader;
+    }
 }

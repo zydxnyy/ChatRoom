@@ -27,6 +27,5 @@ int main(int argc, char *argv[])
         m.init();
         m.show();
     }
-    cout << "Out " << endl;
     return a.exec();
 }

@@ -5,6 +5,7 @@
 #include <QStringListModel>
 #include <QKeyEvent>
 #include <addfridlg.h>
+#include <listwidgetfrirqst.h>
 
 void deleteAtI(std::vector<u_int>& v, int pos) {
     std::vector<u_int>::iterator itr=v.begin();
@@ -32,10 +33,12 @@ MainWindow::MainWindow(QWidget *parent, Client* client) :
     ui->chatBoard->setReadOnly(true);
     ui->sendMsgEdit->installEventFilter(this);
 
+    notificationDlg = new Notification(this, client);
+    afd = new AddFriDlg(this, client);
     yColor.setAlphaF(0.3);
     yColor.setRedF(1);
 
-    select_id = -1;
+    select_id = 0;
 }
 
 MainWindow::~MainWindow()
@@ -46,12 +49,16 @@ MainWindow::~MainWindow()
 void MainWindow::init() {
     UserMap::iterator itr;
     u_int accountId; char* nickName; bool isOnline;
+    int z = 0;
     for (itr=userMap->begin();itr!=userMap->end();++itr) {
         accountId = itr->second->accountId;
         nickName = (char*)itr->second->nickname.c_str();
+        isOnline = itr->second->isOnline;
 //        ui->friendList->addAction(new QAction(QString::number(accountId)+QString::fromLocal8Bit(nickName)));
         v.push_back(accountId);
         ui->friendList->addItem(QString::number(accountId)+"->"+QString::fromLocal8Bit(nickName));
+        if (isOnline) ui->friendList->item(z)->setBackgroundColor(yColor);
+        ++z;
     }
     ui->accountId->setText(QString::number(client->self.accountId));
     ui->nickname->setText(QString::fromLocal8Bit(client->self.nickname.c_str()));
@@ -60,8 +67,18 @@ void MainWindow::init() {
 void MainWindow::on_recvNotifyLogin(u_int accountId) {
     User* user = client->userMap[accountId];
     if (user==NULL) return;
-    v.push_back(accountId);
-    ui->friendList->addItem(QString::number(user->accountId)+"->"+QString::fromLocal8Bit(user->nickname.c_str()));
+    int row = findRow(v, accountId);
+    //ÒÑ¾­´æÔÚ
+    if (row!=-1) {
+        QColor q;
+        q.setAlphaF(0.3);
+        q.setGreenF(0.7);
+        ui->friendList->item(row)->setBackgroundColor(q);
+    }
+    else {
+        v.push_back(accountId);
+        ui->friendList->addItem(QString::number(user->accountId)+"->"+QString::fromLocal8Bit(user->nickname.c_str()));
+    }
 }
 
 void MainWindow::on_friendList_currentRowChanged(int currentRow)
@@ -82,7 +99,7 @@ void MainWindow::on_friendList_currentRowChanged(int currentRow)
 
 void MainWindow::on_send_clicked()
 {
-    if (select_id == -1) return;
+    if (select_id == 0) return;
     string chatMsg = ui->sendMsgEdit->toPlainText().toLocal8Bit().data();
     if (chatMsg.empty()) return;
     cout << "Ready to send" << endl;
@@ -127,11 +144,9 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
 }
 
 void MainWindow::on_recvLogout(u_int logoutId) {
-    cout << "Recv logout" << endl;
     int row = findRow(v, logoutId);
-    deleteAtI(v, row);
-    cout << "row = " << row << endl;
-    ui->friendList->takeItem(row);
+    yColor.setAlphaF(0);
+    ui->friendList->item(row)->setBackgroundColor(yColor);
 }
 
 void MainWindow::on_friendList_itemSelectionChanged()
@@ -146,6 +161,10 @@ void MainWindow::on_friendList_itemClicked(QListWidgetItem *item)
 
 void MainWindow::on_add_fri_triggered()
 {
-    AddFriDlg* afd = new AddFriDlg(this, client);
     afd->exec();
+}
+
+void MainWindow::on_action_triggered()
+{
+    notificationDlg->exec();
 }

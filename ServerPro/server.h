@@ -16,6 +16,7 @@
 #include <QtSql/QSqlQuery>
 #include <QDebug>
 #include <json/json.h>
+#include <set>
 
 class Server
 {
@@ -28,6 +29,8 @@ class Server
     UserMap userMap;
     HANDLE rwUserMap;
     QSqlDatabase database;
+    //存放匹配请求的
+    set<FriRqstPair> FriRqstPairSet;
     /*******************私有处理线程**********************/
     friend DWORD WINAPI listenThreadFunc(LPVOID lpParam);
     friend DWORD WINAPI recvThreadFunc(LPVOID lpParam);
@@ -40,7 +43,7 @@ class Server
     int recvRegis(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSendBufferMutex, HANDLE* sendBufferSmp);
     int recvChat(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSendBufferMutex, HANDLE* sendBufferSmp);
     int recvSrchFri(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSendBufferMutex, HANDLE* sendBufferSmp);
-
+    int recvAddFriRqst(MyBuffer* recvBuffer, MyBuffer* sendBuffer, HANDLE* rwSendBufferMutex, HANDLE* sendBufferSmp);
 public:
     Server();
     ~Server();
